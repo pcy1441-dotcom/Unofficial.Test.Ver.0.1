@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PINEAPPLE MYSTERY - Official 1.0</title>
+<style>
+:root {
+  --bg:#050505;--accent:#f4d03f;--red:#cc0000;--blue:#2b57ff;--green:#28a745;
+  --kiwi:#00ff00;--bberry:#4facfe;--pink:#ff69b4;--gold:#b8860b;
+}
+body{font-family:'Courier New',monospace;background:var(--bg);color:#e0e0e0;margin:0;text-align:center;transition:.8s}
+body.kiwi-mode{--accent:var(--kiwi);color:var(--kiwi)}
+body.blueberry-mode{--accent:var(--bberry);color:#fff}
+body.eden-active{background:#fff!important;color:#000!important}
+.ticker-wrap{width:100%;background:var(--accent);color:#000;padding:5px 0;font-weight:900;position:fixed;z-index:10}
+.t-top{top:0}.t-bottom{bottom:0}
+.ticker{white-space:nowrap;animation:ticker 30s linear infinite}
+@keyframes ticker{to{transform:translateX(-50%)}}
+.wrapper{min-height:100vh;display:flex;justify-content:center;align-items:center;flex-direction:column}
+.card{background:rgba(10,10,10,.98);padding:35px;border-radius:20px;border:1px solid #222;max-width:380px;width:100%}
+.btn{background:#111;color:#fff;border:1px solid #333;padding:15px;border-radius:8px;width:100%;margin-top:10px;font-weight:bold}
+#role{font-size:45px;font-weight:900}
+#skill{font-size:30px;font-weight:bold}
+.sk-gun{background:linear-gradient(45deg,#f00,#00f);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sk-pink{color:var(--pink)}.sk-gold{color:var(--gold)}
+.sk-eden{color:#f00;text-shadow:0 0 15px rgba(255,0,0,.8)}
+#debug-btn{font-size:10px;color:#1a1a1a;cursor:pointer}
+#debug-panel{display:none;background:#000;border:1px dashed var(--accent);padding:15px;font-size:11px;text-align:left}
+</style>
+</head>
+<body>
+
+<div class="ticker-wrap t-top"><div class="ticker" id="tick-t">PINEAPPLE SYSTEM ONLINE 🍍</div></div>
+
+<div class="wrapper">
+<div id="menu" class="card">
+<h1 id="m-title" style="color:var(--accent);letter-spacing:5px;">PINEAPPLE</h1>
+<p id="m-desc" style="font-size:10px;color:#555;">DOMINANT SYSTEM</p>
+PLAYER:
+<input id="pCount" type="number" min="4" max="20" value="6" onchange="updateDebugRows()">
+<button onclick="bootSystem()" class="btn" style="color:var(--accent)">START SYSTEM</button>
+<span id="debug-btn" onclick="openAdmin()">[ADMIN]</span>
+<div id="debug-panel">
+TYPE:
+<select id="forceType">
+<option value="none">RANDOM</option>
+<option value="Standard">Standard (59%)</option>
+<option value="Chillsear">Chillsear (30%)</option>
+<option value="Zombie">Zombie (10%)</option>
+<option value="Eden">Eden (1%)</option>
+</select>
+<div id="p-overrides"></div>
+</div>
+</div>
+
+<div id="draw-area" class="card" style="display:none">
+<div id="pNum"></div>
+<button onclick="reveal()" class="btn" style="background:var(--red)">ACCESS ROLE</button>
+</div>
+
+<div id="result" class="card" style="display:none;background:#f5f5f5;color:#111">
+<div id="role"></div>
+<div id="skill"></div>
+<div id="desc"></div>
+<button onclick="next()" class="btn">CONFIRM</button>
+</div>
+
+<div id="final-screen" class="card" style="display:none">
+<div id="fType"></div>
+<div id="fDesc"></div>
+<button onclick="location.reload()" class="btn">REBOOT</button>
+</div>
+</div>
+
+<div class="ticker-wrap t-bottom"><div class="ticker">🍍 PINEAPPLE CORP 🍍</div></div>
+
+<script>
+const skills={
+머더:[
+{n:"방탄",d:"한 번 공격을 버팁니다."},
+{n:"가방",d:"죽인 대상이 지연 사망합니다."},
+{n:"총잡이",d:"보안관과 같은 방식으로 처치합니다.",s:"sk-gun"}
+],
+보안관:[
+{n:"강인한",d:"목숨이 2개가 됩니다."},
+{n:"마피아",d:"머더와 시민 제거 시 즉시 승리.",s:"sk-gold"}
+],
+의사:[
+{n:"자가치유",d:"자신을 1회 치료합니다."},
+{n:"전문 의사",d:"최대 2명 치료 가능."}
+],
+시민:[
+{n:"스파이",d:"특수 조건 승리.",s:"sk-gold"},
+{n:"퍼블win",d:"첫 희생 시 시민 즉승.",s:"sk-pink"},
+{n:"패링",d:"한 번 공격을 막습니다."}
+]
+};
+
+const mTypes=[
+{n:"Standard",w:59,d:"기본 라운드",c:"var(--red)"},
+{n:"Chillsear",w:30,d:"치료 불가",c:"#87CEEB"},
+{n:"Zombie",w:10,d:"감염 라운드",c:"#32CD32"},
+{n:"Eden",w:1,d:"머더 5목숨",c:"#000"}
+];
+
+let tP,cur,rls,rMT,aS;
+let usedSkills;
+
+function openAdmin(){
+const pw=prompt("ENTER CODE:");
+if(pw==="9245"){document.body.className="kiwi-mode";document.getElementById("debug-panel").style.display="block"}
+if(pw==="1441"){document.body.className="blueberry-mode";document.getElementById("debug-panel").style.display="block"}
+}
+
+function updateDebugRows(){
+const cnt=pCount.value;
+const con=document.getElementById("p-overrides");
+con.innerHTML="";
+for(let i=0;i<cnt;i++){
+con.innerHTML+=`P${i+1}:
+<select id="p${i}r">
+<option value="none">RAND</option>
+<option value="머더">머더</option>
+<option value="보안관">보안관</option>
+<option value="의사">의사</option>
+<option value="시민">시민</option>
+</select>
+<select id="p${i}s">
+<option value="none">RAND</option>
+<option value="무능력">무능력</option>
+<option value="방탄">방탄</option>
+<option value="총잡이">총잡이</option>
+<option value="마피아">마피아</option>
+<option value="스파이">스파이</option>
+<option value="퍼블win">퍼블win</option>
+</select><br>`;
+}
+}
+
+function bootSystem(){
+tP=+pCount.value;
+usedSkills={머더:new Set(),보안관:new Set(),의사:new Set(),시민:new Set()};
+
+const f=document.getElementById("forceType").value;
+if(f!=="none")rMT=mTypes.find(x=>x.n===f);
+else{
+let r=Math.random()*100,c=0;
+for(const t of mTypes){c+=t.w;if(r<c){rMT=t;break}}
+}
+
+rls=new Array(tP).fill(null);
+["머더","보안관","의사"].forEach(role=>{
+let i=Math.floor(Math.random()*tP);
+while(rls[i])i=Math.floor(Math.random()*tP);
+rls[i]=role;
+});
+rls=rls.map(r=>r||"시민");
+
+let citizens=rls.map((r,i)=>r==="시민"?i:null).filter(i=>i!==null);
+citizens.sort(()=>Math.random()-.5);
+let lucky=citizens.slice(0,Math.min(2,citizens.length));
+
+aS=rls.map((role,i)=>{
+const fs=document.getElementById(`p${i}s`)?.value;
+if(role==="머더"&&rMT.n==="Eden")return{n:"Eden Protocol",d:"불사신 머더",s:"sk-eden"};
+if(fs&&fs!=="none"){
+if(fs==="무능력")return{n:"무능력",d:"능력 없음"};
+for(const k in skills){const f=skills[k].find(s=>s.n===fs);if(f)return f}
+}
+if(role==="시민"&&!lucky.includes(i))return{n:"무능력",d:"능력 없음"};
+
+let pool=skills[role].filter(s=>!usedSkills[role].has(s.n));
+if(!pool.length)return{n:"무능력",d:"능력 없음"};
+let pick=pool[Math.floor(Math.random()*pool.length)];
+usedSkills[role].add(pick.n);
+return pick;
+});
+
+cur=0;
+menu.style.display="none";
+draw-area.style.display="block";
+pNum.innerText="PLAYER 1";
+}
+
+function reveal(){
+role.innerText=rls[cur];
+skill.innerText=aS[cur].n;
+desc.innerText=aS[cur].d;
+draw-area.style.display="none";
+result.style.display="block";
+}
+
+function next(){
+cur++;
+if(cur>=tP){
+result.style.display="none";
+final-screen.style.display="block";
+fType.innerText=rMT.n;
+fType.style.color=rMT.c;
+fDesc.innerText=rMT.d;
+if(rMT.n==="Eden")document.body.classList.add("eden-active");
+return;
+}
+result.style.display="none";
+draw-area.style.display="block";
+pNum.innerText=`PLAYER ${cur+1}`;
+}
+</script>
+</body>
+</html>
